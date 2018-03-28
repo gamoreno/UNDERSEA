@@ -47,9 +47,9 @@ cd $HOME
 #PCM-based controller
 cd $CONTROLLER_DIR
 
-if [ ! -d "$BUILD_DIR/models" ]; then
+#if [ ! -d "$BUILD_DIR/models" ]; then
   cp -r models $BUILD_DIR/
-fi
+#fi
 
 #if [ ! -d "$BUILD_DIR/repo" ]; then
 cp -r repo $BUILD_DIR/

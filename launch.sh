@@ -10,7 +10,7 @@ MOOS="targ_uuv.moos"
 BHV="targ_uuv.bhv"
 PROPERTIES="resources/config.properties"
 
-export LD_LIBRARY_PATH=$BUILD_DIR/repo/prism
+export LD_LIBRARY_PATH=$BUILD_DIR/repo/prism:$BUILD_DIR/repo/pladapt
 
 #-------------------------------------------------------------------
 #  Part 1: Check for and handle command-line arguments
@@ -98,7 +98,7 @@ sleep 3
 
 #start controller
 
-(time java -jar UNDERSEA_Controller.jar) 2> CPU.txt
+(time java -ea -jar UNDERSEA_Controller.jar) 2> CPU.txt
 EXIT_VALUE=$?
 
 if [ ! -d "log" ]; then

@@ -12,6 +12,8 @@ import auxiliary.Utility;
 import controller.uuv.UUV;
 import controller.uuv.UUVSensor;
 import controllerPMC.prism.PMCResult;
+import pladapt.StringVector;
+import pladapt.TimeSeriesPredictor;
 
 public class Knowledge {
 	private static Knowledge knowledge = null;	
@@ -36,7 +38,16 @@ public class Knowledge {
 
 	/** flag showning whether analysis is required*/
 	public boolean analysisRequired = false;
+	
+	public Map<String, TimeSeriesPredictor> predictors = new HashMap<String, TimeSeriesPredictor>();
+	public StringVector tacticsToExecute;
 
+    /**
+     * load PLADAPT wrapper
+     */
+    static {
+        System.loadLibrary("pladapt_wrap");
+      }
 	
 	public static Knowledge getInstance(){
 		if (knowledge == null)

@@ -1,0 +1,153 @@
+open util/boolean
+open util/ordering[S] as Speeds
+open util/ordering[TraceElement] as trace
+open util/ordering[T] as TO
+
+abstract sig T {} // tactics
+one sig IncSpeed, DecSpeed extends T {} // tactics with no latency
+#foreach($s in $sensors)
+one sig ${s}On, ${s}Off extends T {} // tactics with no latency
+#end
+
+sig S {} // the different speeds
+
+/* each element of C represents a configuration */
+abstract sig C {
+	speed : S,
+#foreach($s in $sensors)
+	${s} : Bool#if( $foreach.hasNext ),#end
+
+#end
+}
+
+pred equals[c, c2 : C] {
+	all f : C$.fields | c.(f.value) = c2.(f.value) 
+}
+
+pred equalsExcept[c, c2 : C, ef : univ] {
+	all f : C$.fields | f=ef or c.(f.value) = c2.(f.value) 
+}
+
+
+fact tacticOrdering {
+	TO/first = IncSpeed
+	IncSpeed.next = DecSpeed
+#foreach($s in $sensors)
+	#if ($foreach.count == 1)
+	DecSpeed.next = ${s}On
+	#else
+	${prev}Off.next = ${s}On 
+	#end
+	${s}On.next = ${s}Off
+	#set($prev = $s)
+#end
+}
+
+sig TraceElement {
+	cp : C,
+	starts : set T // tactic started
+}
+
+// do not generate atoms that do not belong to the trace
+fact {
+	C in TraceElement.cp
+}
+
+pred equals[e, e2 : TraceElement] {
+	all f : TraceElement$.subfields | e.(f.value) = e2.(f.value) 
+}
+
+fact traces {
+	let fst = trace/first |  fst.starts = none
+	all e : TraceElement - last | let e' = next[e] | {
+		// noop as a trace suffix
+		// note: this works only because it is not possible to go back to the same state in the same trace
+		equals[e, e'] 
+		equals[e', trace/last]
+	} or ( (
+		incSpeedTactic[e, e'] or decSpeedTactic[e, e']
+#foreach($s in $sensors)
+		or
+		${s}OnTactic[e, e'] or ${s}OffTactic[e, e'] 
+#end
+			) and (
+				let s = e'.starts - e.starts | all t : s | validOrder[t, e]))
+}
+
+pred validOrder[t : T, e : TraceElement] {
+	all s : T | s in e.starts => !(s in t.nexts)
+}
+
+
+
+pred SpeedTacticCompatible[e : TraceElement] {
+	!(IncSpeed in e.starts) and !(DecSpeed in e.starts)
+}
+
+pred incSpeedTactic[e, e' : TraceElement] {
+	SpeedTacticCompatible[e] and e.cp.speed != Speeds/last
+	e'.starts = e.starts + IncSpeed
+
+	let c = e.cp, c'=e'.cp | {
+		c'.speed = c.speed.next
+
+		// nothing else changes
+		equalsExcept[c, c', C$speed]
+	}
+}
+
+pred decSpeedTactic[e, e' : TraceElement] {
+	SpeedTacticCompatible[e] and e.cp.speed != Speeds/first
+	e'.starts = e.starts + DecSpeed
+
+	let c = e.cp, c'=e'.cp | {
+		c'.speed = c.speed.prev
+
+		// nothing else changes
+		equalsExcept[c, c', C$speed]
+	}
+}
+
+
+#foreach($s in $sensors)
+
+pred ${s}TacticCompatible[e : TraceElement] {
+	!(${s}On in e.starts) and !(${s}Off in e.starts)
+}
+
+pred ${s}OnTactic[e, e' : TraceElement] {
+	${s}TacticCompatible[e] and e.cp.${s}.isFalse
+	e'.starts = e.starts + ${s}On
+
+	let c = e.cp, c'=e'.cp | {
+		c'.${s} = boolean/True
+
+		// nothing else changes
+		equalsExcept[c, c', C$${s}]
+	}
+}
+
+pred ${s}OffTactic[e, e' : TraceElement] {
+	${s}TacticCompatible[e] and e.cp.${s}.isTrue
+	e'.starts = e.starts + ${s}Off
+
+	let c = e.cp, c'=e'.cp | {
+		c'.${s} = boolean/False
+
+		// nothing else changes
+		equalsExcept[c, c', C$${s}]
+	}
+}
+#end
+
+
+pred show {
+}
+
+// the scope for TraceElement, C and CP has to be one more than the maximum
+// number of tactics that could be started concurrently
+// These are not set in the Java program since they depend on the number
+// of tactics. It has to be generated here.
+#set($bound = $sensors.size() + 1)
+run show for exactly 5 S, $bound C, $bound TraceElement
+

@@ -4,11 +4,10 @@ import controller.Analyser;
 import controller.Controller;
 import controller.Executor;
 import controller.Monitor;
-import controller.Planner;
-import controllerPMC.AnalyserPMC;
-import controllerPMC.ExecutorPMC;
-import controllerPMC.MonitorPMC;
-import controllerPMC.PlannerPMC;
+import controllerDefault.AnalyserDefault;
+import controllerPLASDP.ExecutorPLASDP;
+import controllerPLASDP.MonitorPLASDP;
+import controllerPLASDP.PlannerPLASDP;
 
 public class MainController {
 
@@ -29,10 +28,10 @@ public class MainController {
 
 
 		//PMC-based controller
-	    Monitor monitor  	= new MonitorPMC();
-	    Analyser analyser	= new AnalyserPMC();
-	    Planner planner		= new PlannerPMC();
-	    Executor executor	= new ExecutorPMC();
+//	    Monitor monitor  	= new MonitorPMC();
+//	    Analyser analyser	= new AnalyserPMC();
+//	    Planner planner		= new PlannerPMC();
+//	    Executor executor	= new ExecutorPMC();
 		
 		//CT-based controller
 //	    Monitor monitor  	= new MonitorCT();
@@ -40,6 +39,20 @@ public class MainController {
 //	    Planner planner		= new PlannerCT();
 //	    Executor executor	= new ExecutorCT();
 		
+		//PLA-SDP controller
+	    Monitor monitor  	= new MonitorPLASDP();
+	    Analyser analyser	= new AnalyserDefault();
+	    PlannerPLASDP planner		= new PlannerPLASDP();
+	    try {
+	    	planner.initialize();
+	    }
+	    catch (Exception e) {
+	    	System.out.println("Failed to initialize planner:");
+	    	e.printStackTrace();
+	    	return;
+	    }
+	    Executor executor	= new ExecutorPLASDP();
+
 		//create new controller
 		Controller controller = new Controller(monitor, analyser, planner, executor);
 					
