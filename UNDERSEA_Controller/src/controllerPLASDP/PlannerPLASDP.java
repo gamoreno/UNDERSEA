@@ -6,13 +6,13 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Iterator;
+import java.util.Map;
 import java.util.Map.Entry;
 
 import org.apache.velocity.VelocityContext;
 import org.apache.velocity.app.Velocity;
 import org.ho.yaml.Yaml;
 
-import auxiliary.Utility;
 import controller.Knowledge;
 import controller.Planner;
 import pladapt.EnvironmentDTMCPartitioned;
@@ -46,7 +46,7 @@ public class PlannerPLASDP extends Planner {
 	protected void generateAlloyModel() throws IOException {
         Velocity.init();
         VelocityContext context = new VelocityContext();
-        context.put("Common.getInstance().sensors", Common.getInstance().sensors);
+        context.put("sensors", Common.getInstance().sensors);
 
         //StringWriter w = new StringWriter();
         File alloyModel = new File(PLASDP_REACH_MODEL + "-nl.als");
@@ -74,6 +74,7 @@ public class PlannerPLASDP extends Planner {
         }
 
         // generate all the configurations
+        //System.out.println("We have " + Common.getInstance().speeds.length + " speeds");
         for (int speed = 0; speed < Common.getInstance().speeds.length; speed++) {
         
 	        // iterate over a binary encoding of the sensor configurations
@@ -83,6 +84,7 @@ public class PlannerPLASDP extends Planner {
 	        	config.setInt("speed", speed);
 	        	int mask = 1;
 	            for (String sensor : Common.getInstance().sensors) {
+	            	//System.out.println(sensor + " mask=" + mask + " sensorConfig=" + sensorConfig + " (sensorConfig & mask)=" + (sensorConfig & mask));
 	            	config.setBool(sensor, (sensorConfig & mask) > 0);
 	            	mask = mask << 1;
 	            }
@@ -104,22 +106,35 @@ public class PlannerPLASDP extends Planner {
 	}
 
 	
-	protected EnvironmentDTMCPartitioned generateEnvironment() {
+	protected EnvironmentDTMCPartitioned generateEnvironment(Map<String, Integer> componentMap) {
 		
-		// this generates a DTMC for a single prediction
-		// the GenericEnvironment state in the DTMC has a property "m" the default, with the value
+		// each component of the JointEnvironment in the DTMC is a 
+		// GenericEnvironment, which has a property "m" the default, with the value
 		// of the state (i.e., what was being fed to the predictor)
-		// when using multiple predictors, all the DTMCs will have to be joined
-		Iterator<Entry<String, TimeSeriesPredictor> > it = Knowledge.getInstance().predictors.entrySet().iterator();
-		EnvironmentDTMCPartitioned envDTMC = it.next().getValue().generateEnvironmentDTMC(PLASDP_ENV_DTMC_BRANCHING_DEPTH,
-				PLASDP_ENV_DTMC_DEPTH);
-		EnvironmentDTMCPartitioned env2 = null;
-		if (it.hasNext()) {
-			env2 = EnvironmentDTMCPartitioned.createJointDTMC(envDTMC, it.next().getValue().generateEnvironmentDTMC(PLASDP_ENV_DTMC_BRANCHING_DEPTH,
-				PLASDP_ENV_DTMC_DEPTH));
+		int component = 0;
+		if (componentMap != null) {
+			componentMap.clear();
 		}
 		
-		return env2;
+		EnvironmentDTMCPartitioned envDTMC = null;
+		Iterator<Entry<String, TimeSeriesPredictor> > it = Knowledge.getInstance().predictors.entrySet().iterator();
+		while (it.hasNext()) {
+			Entry<String, TimeSeriesPredictor> entry = it.next();
+			EnvironmentDTMCPartitioned newEnvDTMC = entry.getValue().generateEnvironmentDTMC(PLASDP_ENV_DTMC_BRANCHING_DEPTH,
+					PLASDP_ENV_DTMC_DEPTH);
+			if (componentMap != null) {
+				componentMap.put(entry.getKey(), component++);
+			}
+			if (envDTMC == null) {
+				envDTMC = newEnvDTMC;
+			} else {
+				envDTMC = EnvironmentDTMCPartitioned.createJointDTMC(envDTMC, newEnvDTMC);
+			}
+		}
+		
+		//System.out.println(envDTMC.toString());
+		
+		return envDTMC;
 	}
 
 
@@ -131,14 +146,17 @@ public class PlannerPLASDP extends Planner {
         for (String sensor : Common.getInstance().sensors) {
         	int sensorState = (int) Knowledge.getInstance().getSensorState(sensor);
         	if (sensorState == -1) {
-        		sensorState = 0; // TODO for now assume that -1 == 0, but is it the same?
+        		
+        		// Assume that it is disabled if state is -1
+        		sensorState = 0;
         	}
         	currentConfig.setBool(sensor, sensorState != 0);
         }
         System.out.println("current configuration is " + currentConfig);
         
-        UtilityFunction utilityFunction = new UtilityFunction();
-        EnvironmentDTMCPartitioned env = generateEnvironment();
+        Map<String, Integer> componentMap = new HashMap<>();
+        EnvironmentDTMCPartitioned env = generateEnvironment(componentMap);
+        UuvUtilityFunction utilityFunction = new UuvUtilityFunction(componentMap);
 		m_adaptMgr.setDebug(true);
         StringVector tactics = m_adaptMgr.evaluate(currentConfig, env, utilityFunction, HORIZON );
 

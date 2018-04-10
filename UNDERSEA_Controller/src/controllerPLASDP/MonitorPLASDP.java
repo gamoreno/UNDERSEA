@@ -33,6 +33,7 @@ public class MonitorPLASDP extends Monitor {
 			}
 		
 			double rate = sensor.getCurrentRate();
+			System.out.println("Monitor: " + entry.getKey() + " rate = " + rate);
 			predictor.observe(rate);
 		}
 	}	

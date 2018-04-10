@@ -1,5 +1,8 @@
 package controllerPLASDP;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import auxiliary.Utility;
 
 public class Common {
@@ -9,6 +12,7 @@ public class Common {
 	public String[] sensors;
 	public double[] speeds;
 	public double TIME_WINDOW;
+	public Map<String, Double> sensorReliability;
 	
 
 	
@@ -16,6 +20,13 @@ public class Common {
 		TIME_WINDOW = Double.parseDouble(Utility.getProperty("TIME_WINDOW"));
 		
 		sensors = Utility.getProperty("SENSORS").split(",");
+		
+		// TODO this should come from the mission file, but it is not copied
+		// from there to the properties file we can read here
+		sensorReliability = new HashMap<String, Double>();
+		sensorReliability.put("SENSOR1", 0.97);
+		sensorReliability.put("SENSOR2", 0.9);
+		sensorReliability.put("SENSOR3", 0.8);
 		
 		String[] speedRange = Utility.getProperty("SPEED").split(",");
 		double min = Double.parseDouble(speedRange[0]);
