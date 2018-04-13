@@ -151,25 +151,22 @@ bool Sensor::Iterate()
 	double successfulReading = ((rand() % 100 + 1)/100.0) < m_reliability ? 1.0 : 0.0;
 
 	double currentTime = MOOSTime(true)-GetAppStartTime();
-	if (event_index < m_changes.size()){
+	double newRate = m_nominal_rate; // default unless it's in a change
 
+	while (event_index < m_changes.size()) {
 		Change deg    = m_changes.at(event_index);
-		if ( (currentTime >= deg.getStartTime()) && (currentTime <= deg.getFinishTime()) ){
-			Notify(m_sensor_name, successfulReading); //doubleToString(currentTime,3) + "\t DOWN");
-			SetAppFreq(deg.getChange(),deg.getChange());
-		}
-		else if (currentTime > deg.getFinishTime()){
+		if (currentTime > deg.getFinishTime()){
 			event_index++;
-			Notify(m_sensor_name, successfulReading); //doubleToString(currentTime,3) + "\t Recovered");
-			SetAppFreq(m_nominal_rate, m_nominal_rate);
+		} else if ( (currentTime >= deg.getStartTime()) && (currentTime <= deg.getFinishTime()) ){
+			newRate = deg.getChange();
+			break;
+		} else {
+			break;
 		}
-		else{
-			Notify(m_sensor_name, successfulReading); //doubleToString(currentTime,3) + "\t OK");
-		}
-	}
-	else
-		Notify(m_sensor_name, successfulReading); //doubleToString(currentTime,3) + "\t OK");
+	};
 
+	SetAppFreq(newRate, newRate);
+	Notify(m_sensor_name, successfulReading);
 	reportEvent(doubleToString(currentTime,3) + "\t READING");
 
 	AppCastingMOOSApp::PostReport();
@@ -234,7 +231,7 @@ bool Sensor::handleChange(string value)
 
 	vector<Change>::iterator it = m_changes.begin();
 	for (;  it != m_changes.end(); it++){
-		if ((*it).getStartTime() > d.getFinishTime())
+		if ((*it).getStartTime() >= d.getFinishTime())
 			break;
 	}
 	m_changes.insert(it, d);
