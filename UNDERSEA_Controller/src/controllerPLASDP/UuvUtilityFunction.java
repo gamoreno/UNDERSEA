@@ -27,6 +27,7 @@ public class UuvUtilityFunction extends UtilityFunction {
 	
 	private double evalPeriod;
 	private double[] speeds;
+	private GenericConfiguration currentConfig;
 	private Map<String, Integer> componentMap;
 	
     static {
@@ -49,9 +50,10 @@ public class UuvUtilityFunction extends UtilityFunction {
         readingEnergy = Collections.unmodifiableMap(energy);
     }
     
-    public UuvUtilityFunction(Map<String, Integer> componentMap) {
+    public UuvUtilityFunction(GenericConfiguration currentConfig, Map<String, Integer> componentMap) {
     	evalPeriod = Common.getInstance().TIME_WINDOW;
     	this.speeds = Common.getInstance().speeds;
+    	this.currentConfig = currentConfig;
     	this.componentMap = componentMap;
     }
     
@@ -60,26 +62,37 @@ public class UuvUtilityFunction extends UtilityFunction {
     	return (value == null) ? 0.0 : value.doubleValue();
     }
 
+    /**
+     * Compute the energy used for sensing per second
+     * 
+     * Since this is for a single configuration, no switching cost is considered
+     * 
+     * @param config
+     * @param jointEnv
+     * @return Joules per second
+     */
+	private double getSensingJoulesPerSec(GenericConfiguration config, JointEnvironment jointEnv) {
+		double joulesPerSec = 0.0;
+		for (Entry<String, UUVSensor> entry : Knowledge.getInstance().sensorsMap.entrySet()) {
+			if (config.getBool(entry.getKey())) {
+				double sensorRate = jointEnv.getComponent(componentMap.get(entry.getKey())).asDouble();
+				UUVSensor sensor = entry.getValue();
+				joulesPerSec += sensorRate * getSensorProperty(sensor.getName(), readingEnergy);
+			}
+		}
+		return joulesPerSec;
+	}
+	
     @Override
 	public double getAdditiveUtility(Configuration config, Environment environment, int time) {
-//		if (config.getBool("SENSOR1") && config.getBool("SENSOR2")) {
-//			return 10.0;
-//		}
-//		return 1.0;
 		GenericConfiguration _config = (GenericConfiguration) config;
 		JointEnvironment jointEnv = (JointEnvironment) environment;
 
 		double speed = speeds[_config.getInt("speed")];
 
-		double joulesPerMeter = 0.0;
-		for (Entry<String, UUVSensor> entry : Knowledge.getInstance().sensorsMap.entrySet()) {
-			if (_config.getBool(entry.getKey())) {
-				double sensorRate = jointEnv.getComponent(componentMap.get(entry.getKey())).asDouble();
-				UUVSensor sensor = entry.getValue();
-				joulesPerMeter += sensorRate * getSensorProperty(sensor.getName(), readingEnergy);
-			}
-		}
-		joulesPerMeter /= speed;
+		double joulesPerSec = getSensingJoulesPerSec(_config, jointEnv);
+		
+		double joulesPerMeter = joulesPerSec / speed;
 		
 		double energy = 10 * joulesPerMeter;
 		
@@ -88,56 +101,85 @@ public class UuvUtilityFunction extends UtilityFunction {
 		// consider only the distance traveled in the evaluation period
 		return REWARD_SHIFT - (costPer10m / 10) * speed * evalPeriod;
 	}
-	
+
     @Override
 	public double getAdaptationReward(Configuration from, Configuration to, int time) {
-		System.out.println("getAdaptationReward()");
     	GenericConfiguration _from = (GenericConfiguration) from;
     	GenericConfiguration _to = (GenericConfiguration) to;
     	
-    	double switchingCost = 0.0;
-		double speed = speeds[_to.getInt("speed")];
-
-		for (String sensor : Knowledge.getInstance().sensorsMap.keySet()) {
-			if (_from.getBool(sensor) && !_to.getBool(sensor)) {
-				switchingCost += getSensorProperty(sensor, switchOffCost);
-			} else if (!_from.getBool(sensor) && _to.getBool(sensor)) {
-				switchingCost += getSensorProperty(sensor, switchOnCost);
-			} 
-		}
+    	double switchingCost = getSwitchingEnergy(_from, _to);
 		
 		// prorate the switching cost to the distance traveled in the evaluation period
 		// reward is negative cost, we shift it so that * 0 for unsat requirement is the minimum
+		double speed = speeds[_to.getInt("speed")];
 		return REWARD_SHIFT - (w1 * switchingCost / 10) * speed * evalPeriod; 
+	}
+
+	private double getSwitchingEnergy(GenericConfiguration from, GenericConfiguration to) {
+		double switchingCost = 0.0;
+		for (String sensor : Knowledge.getInstance().sensorsMap.keySet()) {
+			if (from.getBool(sensor) && !to.getBool(sensor)) {
+				switchingCost += getSensorProperty(sensor, switchOffCost);
+			} else if (!from.getBool(sensor) && to.getBool(sensor)) {
+				switchingCost += getSensorProperty(sensor, switchOnCost);
+			} 
+		}
+		return switchingCost;
 	}
 	
 	private int requirement1(GenericConfiguration config, JointEnvironment env) {
-		double imgsPerMeter = 0.0;
+		double imgsPerSec = 0.0;
 
 		double speed = speeds[config.getInt("speed")];
 
 		for (Entry<String, UUVSensor> entry : Knowledge.getInstance().sensorsMap.entrySet()) {
 			if (config.getBool(entry.getKey())) {
-				UUVSensor sensor = entry.getValue();
+//				UUVSensor sensor = entry.getValue();
 //				double alpha = 0.15; // TODO get this right
 //				double probOfAccurateReading = 1 - alpha * speed;
 				double probOfAccurateReading = Common.getInstance().sensorReliability.get(entry.getKey());
 				double sensorRate = env.getComponent(componentMap.get(entry.getKey())).asDouble();
-				imgsPerMeter +=  probOfAccurateReading * sensorRate;
+				imgsPerSec +=  probOfAccurateReading * sensorRate;
 				//System.out.println("speed=" + speed + " probOfAccRead=" + probOfAccurateReading + " sensorRate=" + sensorRate + " imgPerMeter=" + imgsPerMeter);
 			}
 		}
 		
-		imgsPerMeter /= speed;
+		double imgsPerMeter = imgsPerSec / speed;
 		
 		//System.out.println("ImgPerMeter = " + imgsPerMeter);
 		
 		return (imgsPerMeter < 2.0) ? 0 : 1; // at least 20 images per 10m
 	}
 
+	/**
+	 * Checks satisfaction of requirement 2
+	 * 
+	 * The switching cost is only considered for the first adaptation
+	 * 
+	 * @param config
+	 * @param env
+	 * @return 1 if satisfied, 0 otherwise
+	 */
+	private int requirement2(GenericConfiguration config, JointEnvironment env, int time) {
+		double switchingEnergy = 0;
+		if (time == 1) {
+			
+			// this is the first adaptation from the current configuration
+			switchingEnergy = getSwitchingEnergy(currentConfig, config); 
+		}
+		
+		double speed = speeds[config.getInt("speed")];
+		double joulesPerSec = getSensingJoulesPerSec(config, env);
+		double joulesPerMeter = joulesPerSec / speed;
+
+		return (switchingEnergy + joulesPerMeter * 10 > 120.0) ? 0 : 1; // no more than 120 Joules per 10m
+	}
+	
 	@Override
 	public double getMultiplicativeUtility(Configuration config, Environment environment, int time) {
-		return requirement1((GenericConfiguration) config, (JointEnvironment) environment);
+		GenericConfiguration _config = (GenericConfiguration) config;
+		JointEnvironment _environment = (JointEnvironment) environment;
+		return requirement1(_config, _environment) * requirement2(_config, _environment, time);
 	}
 	
 }

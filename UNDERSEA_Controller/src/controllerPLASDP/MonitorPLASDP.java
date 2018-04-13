@@ -10,8 +10,8 @@ import pladapt.TimeSeriesPredictor;
 public class MonitorPLASDP extends Monitor {
 	
 	public static final String TIMESERIES_PREDICTOR_MODEL_ARGS = "LES 0.8 0.15";
-	public static final int TIMESERIES_PREDICTOR_TRAINING_LENGTH = 15;
-	public static final int TIMESERIES_PREDICTOR_HORIZON = 3;
+	public static final int TIMESERIES_PREDICTOR_TRAINING_LENGTH = 10; // was 15
+	public static final int TIMESERIES_PREDICTOR_HORIZON = 5; // was 3
 
 
 	public MonitorPLASDP() {

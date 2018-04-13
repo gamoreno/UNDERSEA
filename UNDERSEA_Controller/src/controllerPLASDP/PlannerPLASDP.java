@@ -27,12 +27,14 @@ public class PlannerPLASDP extends Planner {
 	
 	protected static final String PLASDP_REACH_PATH = "/home/gmoreno/research/code/adaptmgr/reach/reach.sh";
 	protected static final String PLASDP_REACH_MODEL = "uuv-plasdp";
-	protected static final int PLASDP_ENV_DTMC_BRANCHING_DEPTH = 2;
-	protected static final int PLASDP_ENV_DTMC_DEPTH = 2;
+	protected static final int PLASDP_ENV_DTMC_BRANCHING_DEPTH = 1; // was 2
+	protected static final int PLASDP_ENV_DTMC_DEPTH = 5; // was 2
 	protected JavaSDPAdaptationManager m_adaptMgr;
 
 	private long HORIZON;
 	private double MIN_SPEED;
+	
+	private static int count = 0;
 	
     static {
         System.loadLibrary("pladapt_wrap");
@@ -115,13 +117,18 @@ public class PlannerPLASDP extends Planner {
 		if (componentMap != null) {
 			componentMap.clear();
 		}
+		//count++;
 		
 		EnvironmentDTMCPartitioned envDTMC = null;
 		Iterator<Entry<String, TimeSeriesPredictor> > it = Knowledge.getInstance().predictors.entrySet().iterator();
 		while (it.hasNext()) {
 			Entry<String, TimeSeriesPredictor> entry = it.next();
 			EnvironmentDTMCPartitioned newEnvDTMC = entry.getValue().generateEnvironmentDTMC(PLASDP_ENV_DTMC_BRANCHING_DEPTH,
-					PLASDP_ENV_DTMC_DEPTH);
+					PLASDP_ENV_DTMC_DEPTH, 0); // Optional: third arg to use a lower bound of 0 (rate can never be less than 0)
+			if (count > 15) {
+				System.out.println("\n------------ " + entry.getKey());
+				System.out.println(newEnvDTMC.toString());
+			}
 			if (componentMap != null) {
 				componentMap.put(entry.getKey(), component++);
 			}
@@ -129,15 +136,31 @@ public class PlannerPLASDP extends Planner {
 				envDTMC = newEnvDTMC;
 			} else {
 				envDTMC = EnvironmentDTMCPartitioned.createJointDTMC(envDTMC, newEnvDTMC);
+				if (count > 15) {
+					System.out.println("\n------------ joint + " + entry.getKey());
+					System.out.println(envDTMC.toString());
+				}
 			}
 		}
 		
-		//System.out.println(envDTMC.toString());
-		
+		if (count > 15) {
+			System.out.println(envDTMC.toString());
+			System.exit(0);
+		}
 		return envDTMC;
 	}
 
 
+	public void runsimple() {
+
+        StringVector tactics = new StringVector();
+        tactics.add("SENSOR1On");
+        tactics.add("SENSOR2Off");
+        tactics.add("SENSOR3Off");
+
+        Knowledge.getInstance().tacticsToExecute = tactics; // for the Executor to use
+	}	
+	
 	@Override
 	public void run() {
 
@@ -156,8 +179,8 @@ public class PlannerPLASDP extends Planner {
         
         Map<String, Integer> componentMap = new HashMap<>();
         EnvironmentDTMCPartitioned env = generateEnvironment(componentMap);
-        UuvUtilityFunction utilityFunction = new UuvUtilityFunction(componentMap);
-		m_adaptMgr.setDebug(true);
+        UuvUtilityFunction utilityFunction = new UuvUtilityFunction(currentConfig, componentMap);
+		//m_adaptMgr.setDebug(true);
         StringVector tactics = m_adaptMgr.evaluate(currentConfig, env, utilityFunction, HORIZON );
 
         if (tactics.isEmpty()) {
@@ -165,6 +188,6 @@ public class PlannerPLASDP extends Planner {
         }
         
         Knowledge.getInstance().tacticsToExecute = tactics; // for the Executor to use
-	}	
+	}
 
 }
