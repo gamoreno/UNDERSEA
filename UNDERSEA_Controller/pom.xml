@@ -60,8 +60,8 @@
 		  
   	<dependency>
   		<groupId>pladapt</groupId>
-  		<artifactId>pladapt</artifactId>
-  		<version>1.0</version>
+  		<artifactId>pladapt_wrap</artifactId>
+  		<version>1.0.1</version>
   	</dependency>
   	<dependency>
   		<groupId>org.jyaml</groupId>
